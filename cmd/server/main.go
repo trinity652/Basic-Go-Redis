@@ -19,7 +19,7 @@ func main() {
 	// Load configuration or use default if the file is not found
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		logger.ErrorLogger.Printf("Failed to load configuration: %v", err)
+		logger.ErrorLogger.Printf("Server side: Failed to load configuration: %v", err)
 		logger.InfoLogger.Println("Using default configuration")
 
 		cfg = &config.Config{
