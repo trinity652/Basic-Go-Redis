@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -22,7 +24,28 @@ func readResponse(reader *bufio.Reader) string {
 		fmt.Println("Error reading response:", err)
 		return ""
 	}
-	return strings.TrimSpace(response) // Trim space for cleaner output
+
+	trimmedResponse := strings.TrimSpace(response)
+
+	// Handle multi-line responses
+	if strings.HasPrefix(trimmedResponse, "$") {
+		expectedBytes, err := strconv.Atoi(trimmedResponse[1:])
+		if err != nil {
+			fmt.Println("Error parsing expected bytes:", err)
+			return ""
+		}
+
+		buffer := make([]byte, expectedBytes)
+		_, err = io.ReadFull(reader, buffer)
+		if err != nil {
+			fmt.Println("Error reading multi-line response:", err)
+			return ""
+		}
+
+		return string(buffer)
+	}
+
+	return trimmedResponse
 }
 
 func main() {
