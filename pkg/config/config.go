@@ -9,6 +9,7 @@ import (
 
 // Config defines the structure of the configuration parameters
 type Config struct {
+	ServerHost string `json:"server_host"`
 	ServerPort string `json:"server_port"`
 	LogLevel   string `json:"log_level"`
 }
