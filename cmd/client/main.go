@@ -3,6 +3,7 @@
 package main
 
 import (
+	"basic-go-redis/internal/protocol" // Adjust the import path as per your module name
 	"bufio"
 	"fmt"
 	"net"
@@ -36,7 +37,15 @@ func main() {
 			break
 		}
 
-		_, err = conn.Write([]byte(trimmedInput + "\r\n"))
+		// Splitting the input into command and arguments
+		parts := strings.Split(trimmedInput, " ")
+		command := parts[0]
+		args := parts[1:]
+
+		// Serialize the input using the RESP protocol
+		serializedInput := protocol.Serialize(command, args)
+
+		_, err = conn.Write([]byte(serializedInput + "\r\n"))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error sending command to server: %v\n", err)
 			continue
