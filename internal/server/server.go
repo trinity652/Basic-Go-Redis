@@ -7,6 +7,7 @@ import (
 	"basic-go-redis/internal/store"
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 )
@@ -24,6 +25,8 @@ func NewServer(port string) *Server {
 }
 
 func (s *Server) Start() error {
+
+	// Start listening on the specified port
 	listener, err := net.Listen("tcp", ":"+s.port)
 	if err != nil {
 		return err
@@ -32,6 +35,7 @@ func (s *Server) Start() error {
 
 	fmt.Printf("Server listening on port %s\n", s.port)
 
+	// Accept incoming connections
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -39,7 +43,7 @@ func (s *Server) Start() error {
 			continue
 		}
 
-		go s.handleConnection(conn)
+		go s.handleConnection(conn) // Go helps to run the handleConnection in a separate goroutine
 	}
 }
 
@@ -51,35 +55,81 @@ func (s *Server) handleConnection(conn net.Conn) {
 	for {
 		command, args, err := protocol.Deserialize(reader)
 		if err != nil {
+			log.Printf("Error deserializing command: %v\n", err)
 			fmt.Fprintf(conn, "-ERR %s\r\n", err)
 			continue
 		}
 
+		log.Printf("Received command: %s with args: %v\n", command, args)
+
 		response := s.executeCommand(command, args)
-		conn.Write([]byte(response))
+		log.Printf("Received response: %s", response)
+		_, err = conn.Write([]byte(response))
+		fmt.Println("Response sent")
+		if err != nil {
+			log.Printf("Error sending response: %v\n", err)
+			return
+		}
 	}
 }
 
 func (s *Server) executeCommand(command string, args []string) string {
 	switch command {
 	case "SET":
-		if len(args) != 2 {
-			return "-ERR wrong number of arguments\r\n"
+		if len(args) < 2 {
+			return "-ERR wrong number of arguments for 'SET' command\r\n"
 		}
-		return s.store.Set(args[0], args[1])
+		ttl := 0
+		if len(args) > 2 {
+			var err error
+			ttl, err = strconv.Atoi(args[2])
+			if err != nil {
+				return "-ERR invalid TTL value\r\n"
+			}
+		}
+		return s.store.Set(args[0], args[1], ttl)
 
 	case "GET":
 		if len(args) != 1 {
-			return "-ERR wrong number of arguments\r\n"
+			return "-ERR wrong number of arguments for 'GET' command\r\n"
 		}
 		return s.store.Get(args[0])
 
 	case "DEL":
 		if len(args) < 1 {
-			return "-ERR wrong number of arguments\r\n"
+			return "-ERR wrong number of arguments for 'DEL' command\r\n"
 		}
 		deleted := s.store.Del(args)
 		return fmt.Sprintf(":%d\r\n", deleted)
+
+	case "KEYS":
+		if len(args) != 1 {
+			return "-ERR wrong number of arguments for 'KEYS' command\r\n"
+		}
+		keys := s.store.Keys(args[0])
+		response := fmt.Sprintf("*%d\r\n", len(keys))
+		for _, key := range keys {
+			response += fmt.Sprintf("$%d\r\n%s\r\n", len(key), key)
+		}
+		return response
+
+	case "EXPIRE":
+		if len(args) != 2 {
+			return "-ERR wrong number of arguments for 'EXPIRE' command\r\n"
+		}
+		seconds, err := strconv.Atoi(args[1])
+		if err != nil {
+			return "-ERR invalid integer\r\n"
+		}
+		result := s.store.Expire(args[0], seconds)
+		return fmt.Sprintf(":%d\r\n", result)
+
+	case "TTL":
+		if len(args) != 1 {
+			return "-ERR wrong number of arguments for 'TTL' command\r\n"
+		}
+		ttl := s.store.TTL(args[0])
+		return fmt.Sprintf(":%d\r\n", ttl)
 
 	case "ZADD":
 		if len(args) < 3 {
