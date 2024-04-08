@@ -22,62 +22,67 @@ func Serialize(command string, args []string) string {
 	for _, arg := range args {
 		resp.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg)) // Each argument
 	}
-
+	//fmt.Println("Resp Serialization:", resp.String())
 	return resp.String()
 }
 
 // Deserialize reads from a connection and parses the RESP command
 func Deserialize(reader *bufio.Reader) (string, []string, error) {
-	// Read the array length
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return "", nil, err
 	}
+	line = strings.TrimRight(line, "\r\n") // Trim CR and LF
 
-	if line[0] != '*' {
-		return "", nil, errors.New("protocol error: expected '*'")
+	if !strings.HasPrefix(line, "*") {
+		return "", nil, errors.New("deserialization protocol error: expected '*'")
 	}
 
-	count, err := strconv.Atoi(strings.TrimSpace(line[1:]))
+	count, err := strconv.Atoi(line[1:])
 	if err != nil {
-		return "", nil, fmt.Errorf("protocol error: invalid array length")
+		return "", nil, fmt.Errorf("deserialization protocol error: invalid array length")
 	}
 
 	var command string
 	var args []string
 
 	for i := 0; i < count; i++ {
-		// Read the bulk string length
 		line, err = reader.ReadString('\n')
 		if err != nil {
 			return "", nil, err
 		}
+		line = strings.TrimRight(line, "\r\n") // Trim CR and LF
 
-		if line[0] != '$' {
-			return "", nil, errors.New("protocol error: expected '$'")
+		if !strings.HasPrefix(line, "$") {
+			return "", nil, errors.New("deserialization protocol error: expected '$'")
 		}
 
-		length, err := strconv.Atoi(strings.TrimSpace(line[1:]))
+		length, err := strconv.Atoi(line[1:])
 		if err != nil {
-			return "", nil, errors.New("protocol error: invalid bulk string length")
+			return "", nil, errors.New("deserialization protocol error: invalid bulk string length")
 		}
 
-		// Read the bulk string
+		if length == -1 { // Handle null bulk string
+			args = append(args, "")
+			continue
+		}
+
 		bulk := make([]byte, length)
 		_, err = io.ReadFull(reader, bulk)
 		if err != nil {
 			return "", nil, err
 		}
 
-		// Discard the CRLF
-		if _, err = reader.Discard(2); err != nil {
+		_, err = reader.Discard(2) // Discard CRLF after bulk string
+		if err != nil {
 			return "", nil, err
 		}
 
+		arg := string(bulk)
 		if i == 0 {
-			command = string(bulk)
+			command = arg
 		} else {
-			args = append(args, string(bulk))
+			args = append(args, arg)
 		}
 	}
 
