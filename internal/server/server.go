@@ -5,9 +5,9 @@ package server
 import (
 	"basic-go-redis/internal/protocol"
 	"basic-go-redis/internal/store"
+	"basic-go-redis/pkg/logger"
 	"bufio"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 )
@@ -55,19 +55,17 @@ func (s *Server) handleConnection(conn net.Conn) {
 	for {
 		command, args, err := protocol.Deserialize(reader)
 		if err != nil {
-			log.Printf("Error deserializing command: %v\n", err)
-			fmt.Fprintf(conn, "-ERR %s\r\n", err)
+			logger.ErrorLogger.Printf("Error deserializing command: %v\n", err)
 			continue
 		}
-
-		log.Printf("Received command: %s with args: %v\n", command, args)
+		logger.InfoLogger.Printf("Received command: %s with args: %v\n", command, args)
 
 		response := s.executeCommand(command, args)
-		log.Printf("Received response: %s", response)
+		logger.InfoLogger.Printf("Received response: %s", response)
 		_, err = conn.Write([]byte(response))
-		fmt.Println("Response sent")
+		logger.InfoLogger.Printf("Sent response: %s", response)
 		if err != nil {
-			log.Printf("Error sending response: %v\n", err)
+			logger.ErrorLogger.Printf("Error in sending response: %v\n", err)
 			return
 		}
 	}
@@ -100,7 +98,7 @@ func (s *Server) executeCommand(command string, args []string) string {
 			return "-ERR wrong number of arguments for 'DEL' command\r\n"
 		}
 		deleted := s.store.Del(args)
-		return fmt.Sprintf(":%d\r\n", deleted)
+		return fmt.Sprintf(":%d\r\n\r\n", deleted)
 
 	case "KEYS":
 		if len(args) != 1 {
@@ -111,6 +109,7 @@ func (s *Server) executeCommand(command string, args []string) string {
 		for _, key := range keys {
 			response += fmt.Sprintf("$%d\r\n%s\r\n", len(key), key)
 		}
+		response += "\r\n"
 		return response
 
 	case "EXPIRE":
@@ -122,14 +121,14 @@ func (s *Server) executeCommand(command string, args []string) string {
 			return "-ERR invalid integer\r\n"
 		}
 		result := s.store.Expire(args[0], seconds)
-		return fmt.Sprintf(":%d\r\n", result)
+		return fmt.Sprintf(":%d\r\n\r\n", result)
 
 	case "TTL":
 		if len(args) != 1 {
 			return "-ERR wrong number of arguments for 'TTL' command\r\n"
 		}
 		ttl := s.store.TTL(args[0])
-		return fmt.Sprintf(":%d\r\n", ttl)
+		return fmt.Sprintf(":%d\r\n\r\n", ttl)
 
 	case "ZADD":
 		if len(args) < 3 {
@@ -140,7 +139,7 @@ func (s *Server) executeCommand(command string, args []string) string {
 			return "-ERR invalid score\r\n"
 		}
 		added := s.store.ZAdd(args[0], score, args[2])
-		return fmt.Sprintf(":%d\r\n", added)
+		return fmt.Sprintf(":%d\r\n\r\n", added)
 
 	case "ZRANGE":
 		if len(args) != 3 {
@@ -155,7 +154,7 @@ func (s *Server) executeCommand(command string, args []string) string {
 			return "-ERR invalid stop argument\r\n"
 		}
 		members := s.store.ZRange(args[0], start, stop)
-		return fmt.Sprintf("+%v\r\n", members)
+		return fmt.Sprintf("+%v\r\n\r\n", members)
 
 	default:
 		return "-ERR unknown command\r\n"

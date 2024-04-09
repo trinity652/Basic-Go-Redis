@@ -28,25 +28,24 @@ func NewInMemoryStore() *InMemoryStore {
 }
 
 func matchPattern(key, pattern string) bool {
-	// Escape regex special characters except '*' and '?'
-	escapedPattern := ""
-	for _, r := range pattern {
-		switch r {
-		case '*', '?': // Don't escape '*' and '?'
-			escapedPattern += string(r)
-		case '.', '^', '$', '+', '(', ')', '[', ']', '{', '}', '|':
-			escapedPattern += "\\" + string(r)
+	// Convert the Redis pattern to a regular expression pattern
+	var regexPatternBuilder strings.Builder
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '*':
+			regexPatternBuilder.WriteString(".*")
+		case '?':
+			regexPatternBuilder.WriteString(".")
+		case '[', ']', '(', ')', '{', '}', '^', '$', '.', '|', '+', '\\':
+			// Escape regex special characters
+			regexPatternBuilder.WriteString("\\")
+			regexPatternBuilder.WriteByte(pattern[i])
 		default:
-			escapedPattern += string(r)
+			regexPatternBuilder.WriteByte(pattern[i])
 		}
 	}
 
-	// Replace the Redis pattern wildcards with regex equivalents
-	wildcardPattern := strings.ReplaceAll(escapedPattern, "*", ".*")
-	wildcardPattern = strings.ReplaceAll(wildcardPattern, "?", ".")
-
-	// Compile the adjusted pattern into a regular expression
-	regexPattern, err := regexp.Compile("^" + wildcardPattern + "$")
+	regexPattern, err := regexp.Compile("^" + regexPatternBuilder.String() + "$")
 	if err != nil {
 		// In case of regex compilation error, fallback to simple comparison
 		return key == pattern
@@ -76,9 +75,9 @@ func (store *InMemoryStore) Get(key string) string {
 	defer store.mutex.RUnlock()
 
 	if value, ok := store.data[key]; ok {
-		return fmt.Sprintf("$%d\r\n%s\r\n", len(value), value)
+		return fmt.Sprintf("$%d\r\n%s\r\n\r\n", len(value), value)
 	}
-	return "$-1\r\n" // Correct RESP format for non-existent key
+	return "$-1\r\n\r\n" // Correct RESP format for non-existent key
 }
 
 // Del removes the specified keys
