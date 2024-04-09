@@ -3,99 +3,16 @@
 package main
 
 import (
-	"basic-go-redis/internal/protocol" // Adjust the import path as per your module name
+	"basic-go-redis/internal/protocol"
 	"basic-go-redis/pkg/config"
 	"basic-go-redis/pkg/logger"
 	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 )
-
-func readFullResponse(reader *bufio.Reader) (string, error) {
-	var response strings.Builder
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return response.String(), err
-		}
-		response.WriteString(line)
-
-		// Check the first character to determine the type of the response
-		if line[0] == '+' || line[0] == '-' || line[0] == ':' || strings.HasPrefix(line, "$-1") {
-			// For simple strings, errors, integers, or empty bulk strings, break after processing
-			break
-		} else if line[0] == '$' {
-			// Process bulk strings
-			length, _ := strconv.Atoi(strings.TrimSpace(line[1:]))
-			if length > 0 {
-				content := make([]byte, length)
-				_, err := io.ReadFull(reader, content)
-				if err != nil {
-					return response.String(), err
-				}
-				response.Write(content)
-				// Read and discard the trailing CRLF after the bulk string
-				_, err = reader.Discard(2)
-				if err != nil {
-					return response.String(), err
-				}
-			}
-			return response.String(), nil
-		} else if line[0] == '*' {
-			// Process arrays
-			count, _ := strconv.Atoi(strings.TrimSpace(line[1:]))
-			if count <= 0 {
-				break
-			}
-			// More logic here to handle the array elements, potentially requiring a recursive approach
-		} else {
-			// Unexpected response type
-			return response.String(), fmt.Errorf("unexpected response type: %s", line)
-		}
-	}
-
-	return response.String(), nil
-
-}
-
-// displayResponse processes the server response and formats it for display just like redis-cli
-func displayResponse(response string) {
-	response = strings.TrimSuffix(response, "\r\n") // Remove trailing CRLF
-	if strings.HasPrefix(response, "+") {
-		// Simple string
-		fmt.Println(strings.TrimPrefix(response, "+"))
-	} else if strings.HasPrefix(response, ":") {
-		// Integer
-		fmt.Println(strings.TrimPrefix(response, ":"))
-	} else if strings.HasPrefix(response, "$") {
-		// Bulk string
-		parts := strings.SplitN(response, "\r\n", 2)
-
-		if len(parts) > 1 {
-			fmt.Println(parts[1])
-		}
-	} else if strings.HasPrefix(response, "*") {
-		// Array
-		parts := strings.SplitN(response, "\r\n", 2)
-		if len(parts) > 1 {
-			arrayBody := parts[1]
-			arrayElements := strings.Split(arrayBody, "\r\n")
-			for i, element := range arrayElements {
-				if element != "" && !strings.HasPrefix(element, "$") {
-					fmt.Printf("%d) \"%s\"\n", i, element)
-				}
-			}
-		}
-	} else {
-		fmt.Println(response)
-	}
-}
 
 func main() {
 
@@ -153,12 +70,14 @@ func main() {
 			continue
 		}
 
-		response, err := readFullResponse(bufio.NewReader(conn))
-
+		response, err := protocol.ReadFullResponse(bufio.NewReader(conn))
+		fmt.Println("Response received by client:", response)
+		logger.InfoLogger.Printf("Response received by client: %s", response)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading response from server: %v\n", err)
+			logger.ErrorLogger.Printf("Error in recieving response: %v\n", err)
 			continue
 		}
-		displayResponse(response)
+		readable := protocol.ConvertRESPToReadable(response)
+		fmt.Println(readable)
 	}
 }

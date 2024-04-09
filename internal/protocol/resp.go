@@ -88,3 +88,97 @@ func Deserialize(reader *bufio.Reader) (string, []string, error) {
 
 	return command, args, nil
 }
+
+func ReadFullResponse(reader *bufio.Reader) (string, error) {
+	var response strings.Builder
+
+	for {
+		line, err := reader.ReadString('\n')
+		fmt.Println("Line:", line)
+		if err != nil {
+			if err == io.EOF && response.Len() > 0 {
+				break // End of file reached, return what we have
+			}
+			return "", err
+		}
+
+		// Break the loop if the line is empty
+		if line == "\r\n" || line == "\n" {
+			break
+		}
+
+		response.WriteString(line)
+
+		// Check if we've reached the end of a Redis response
+		if line[0] == '+' || line[0] == '-' || line[0] == ':' || line[0] == '_' {
+			break
+		} else if line[0] == '$' { // Bulk string
+			length, _ := strconv.Atoi(strings.TrimSpace(line[1:]))
+			if length == -1 {
+				break // Handle nil bulk string
+			}
+			// Read the bulk string content
+			content := make([]byte, length+2) // +2 for \r\n
+			_, err = io.ReadFull(reader, content)
+			if err != nil {
+				return "", err
+			}
+			response.Write(content)
+			fmt.Println("Bulk String:", response.String())
+		} else if line[0] == '*' { // Array
+			count, _ := strconv.Atoi(strings.TrimSpace(line[1:]))
+			if count == -1 {
+				// Handle nil array
+				continue
+			}
+			for i := 0; i < count; i++ {
+				element, err := reader.ReadString('\n')
+				if err != nil {
+					return "", err
+				}
+				response.WriteString(element)
+
+			}
+		}
+
+	}
+
+	return response.String(), nil
+}
+
+func ConvertRESPToReadable(response string) string {
+
+	response = strings.TrimSuffix(response, "\r\n") // Remove trailing CRLF
+	var new_response strings.Builder
+	if strings.HasPrefix(response, "+") {
+		// Simple string
+		return strings.TrimPrefix(response, "+")
+	} else if strings.HasPrefix(response, ":") {
+		// Integer
+		return strings.TrimPrefix(response, ":")
+	} else if strings.HasPrefix(response, "$") {
+		// Bulk string
+		parts := strings.SplitN(response, "\r\n", 2)
+
+		if len(parts) > 1 {
+			return parts[1]
+		}
+	} else if strings.HasPrefix(response, "*") {
+		// Array
+		parts := strings.SplitN(response, "\r\n", 2)
+		if len(parts) > 1 {
+			arrayBody := parts[1]
+			arrayElements := strings.Split(arrayBody, "\r\n")
+			for i, element := range arrayElements {
+				if element != "" && !strings.HasPrefix(element, "$") {
+					formattedString := fmt.Sprintf("%d) \"%s\"\n", i, element)
+					new_response.WriteString(formattedString)
+
+				}
+
+			}
+		}
+		return new_response.String()
+	}
+	return response
+}
