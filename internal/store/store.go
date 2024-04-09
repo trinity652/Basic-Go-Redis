@@ -140,8 +140,14 @@ func (store *InMemoryStore) ZAdd(key string, score float64, member string) int {
 	if _, ok := store.sortedSet[key]; !ok {
 		store.sortedSet[key] = make(map[string]float64)
 	}
+
+	_, memberExists := store.sortedSet[key][member]
 	store.sortedSet[key][member] = score
-	return 1 // Assuming we're always adding a new element for simplicity
+
+	if memberExists {
+		return 0
+	}
+	return 1
 }
 
 // ZRange returns the specified range of elements in the sorted set stored at key
@@ -150,18 +156,35 @@ func (store *InMemoryStore) ZRange(key string, start, stop int) []string {
 	defer store.mutex.RUnlock()
 
 	if sortedSet, ok := store.sortedSet[key]; ok {
-		var members []string
-		for member := range sortedSet {
-			members = append(members, member)
+		// Convert map to slice of key-value pairs and sort by score
+		members := make([]string, 0, len(sortedSet))
+		for member, score := range sortedSet {
+			members = append(members, fmt.Sprintf("%f:%s", score, member))
 		}
-		sort.Strings(members) // Simplified: should sort by score
+		sort.Strings(members)
 
-		if start < 0 || start >= len(members) {
-			return []string{}
+		// Extract just the member names
+		for i, member := range members {
+			parts := strings.SplitN(member, ":", 2)
+			members[i] = parts[1]
 		}
 
+		// Handle negative indices and range exceeding size
+		if start < 0 {
+			start = len(members) + start
+		}
+		if start < 0 {
+			start = 0
+		}
+		if stop < 0 {
+			stop = len(members) + stop
+		}
 		if stop >= len(members) {
 			stop = len(members) - 1
+		}
+
+		if start > stop {
+			return []string{}
 		}
 
 		return members[start : stop+1]
