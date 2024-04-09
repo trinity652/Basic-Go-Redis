@@ -94,7 +94,7 @@ func ReadFullResponse(reader *bufio.Reader) (string, error) {
 
 	for {
 		line, err := reader.ReadString('\n')
-		fmt.Println("Line:", line)
+		//fmt.Println("Line:", line)
 		if err != nil {
 			if err == io.EOF && response.Len() > 0 {
 				break // End of file reached, return what we have
@@ -124,7 +124,7 @@ func ReadFullResponse(reader *bufio.Reader) (string, error) {
 				return "", err
 			}
 			response.Write(content)
-			fmt.Println("Bulk String:", response.String())
+			//fmt.Println("Bulk String:", response.String())
 		} else if line[0] == '*' { // Array
 			count, _ := strconv.Atoi(strings.TrimSpace(line[1:]))
 			if count == -1 {
@@ -169,9 +169,11 @@ func ConvertRESPToReadable(response string) string {
 		if len(parts) > 1 {
 			arrayBody := parts[1]
 			arrayElements := strings.Split(arrayBody, "\r\n")
-			for i, element := range arrayElements {
+			k := 0
+			for _, element := range arrayElements {
 				if element != "" && !strings.HasPrefix(element, "$") {
-					formattedString := fmt.Sprintf("%d) \"%s\"\n", i, element)
+					k++
+					formattedString := fmt.Sprintf("%d) \"%s\"\n", k, element)
 					new_response.WriteString(formattedString)
 
 				}

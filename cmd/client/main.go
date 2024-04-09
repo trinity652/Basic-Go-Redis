@@ -71,7 +71,7 @@ func main() {
 		}
 
 		response, err := protocol.ReadFullResponse(bufio.NewReader(conn))
-		fmt.Println("Response received by client:", response)
+		//fmt.Println("Response received by client:", response)
 		logger.InfoLogger.Printf("Response received by client: %s", response)
 		if err != nil {
 			logger.ErrorLogger.Printf("Error in recieving response: %v\n", err)
