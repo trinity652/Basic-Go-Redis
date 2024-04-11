@@ -96,7 +96,7 @@ func (store *InMemoryStore) Set(key, value string, flags ...string) string {
 		store.expiration[key] = expirationTime
 	}
 
-	return "+1\r\n" // Success
+	return "+OK\r\n" // Success
 }
 
 // Helper function to check if a key exists

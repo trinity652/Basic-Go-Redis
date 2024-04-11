@@ -102,6 +102,11 @@ go-redis-cli> ZRANGE Myset 0 1
 
 Type `exit` to quit the client.
 
+## Testing 
+
+
+
+
 ## Development
 
 - The server's execution logic is located in `cmd/server/main.go`.

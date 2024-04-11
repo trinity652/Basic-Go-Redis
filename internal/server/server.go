@@ -10,65 +10,104 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"sync"
 )
 
 type Server struct {
-	store *store.InMemoryStore
-	port  string
+	store        *store.InMemoryStore
+	port         string
+	connections  map[net.Conn]bool
+	connLock     sync.Mutex
+	shutdownChan chan struct{}
+	listener     net.Listener
+	wg           sync.WaitGroup // WaitGroup to wait for goroutines to finish
 }
 
 func NewServer(port string) *Server {
 	return &Server{
-		store: store.NewInMemoryStore(), // Initialize the InMemoryStore
-		port:  port,
+		store:        store.NewInMemoryStore(),
+		port:         port,
+		connections:  make(map[net.Conn]bool),
+		shutdownChan: make(chan struct{}),
 	}
 }
 
 func (s *Server) Start() error {
-
-	// Start listening on the specified port
-	listener, err := net.Listen("tcp", ":"+s.port)
+	var err error
+	s.listener, err = net.Listen("tcp", ":"+s.port)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
 
 	fmt.Printf("Server listening on port %s\n", s.port)
 
-	// Accept incoming connections
 	for {
-		conn, err := listener.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
-			fmt.Printf("Error accepting connection: %v\n", err)
-			continue
+			// Check if we should stop accepting new connections
+			select {
+			case <-s.shutdownChan:
+				fmt.Printf("Server is shutting down")
+				return nil // Server is shutting down, exit the loop
+			default:
+				fmt.Printf("Error accepting connection: %v\n", err)
+				continue
+			}
 		}
 
-		go s.handleConnection(conn) // Go helps to run the handleConnection in a separate goroutine
+		s.connLock.Lock()
+		s.connections[conn] = true
+		s.connLock.Unlock()
+
+		go s.handleConnection(conn)
 	}
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
+	s.wg.Add(1)       // Increment the WaitGroup counter
+	defer s.wg.Done() // Decrement the counter when the goroutine completes
+
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
-
 	for {
 		command, args, err := protocol.Deserialize(reader)
 		if err != nil {
+			// Log error and exit the goroutine
 			logger.ErrorLogger.Printf("Error deserializing command: %v\n", err)
-			continue
+			return
 		}
-		logger.InfoLogger.Printf("Received command: %s with args: %v\n", command, args)
 
 		response := s.executeCommand(command, args)
-		logger.InfoLogger.Printf("Received response: %s", response)
-		_, err = conn.Write([]byte(response))
-		logger.InfoLogger.Printf("Sent response: %s", response)
-		if err != nil {
+		if _, err := conn.Write([]byte(response)); err != nil {
+			// Log error and exit the goroutine
 			logger.ErrorLogger.Printf("Error in sending response: %v\n", err)
 			return
 		}
 	}
+}
+
+func (s *Server) Close() error {
+	// Signal the listener to stop accepting new connections
+	close(s.shutdownChan)
+
+	if s.listener != nil {
+		if err := s.listener.Close(); err != nil {
+			return err
+		}
+	}
+
+	s.connLock.Lock()
+	for conn := range s.connections {
+		conn.Close() // Ignore error
+		delete(s.connections, conn)
+	}
+	s.connLock.Unlock()
+
+	// Wait for all handleConnection goroutines to finish
+	s.wg.Wait()
+
+	return nil
 }
 
 func (s *Server) executeCommand(command string, args []string) string {
@@ -77,15 +116,17 @@ func (s *Server) executeCommand(command string, args []string) string {
 		if len(args) < 2 {
 			return "-ERR wrong number of arguments for 'SET' command\r\n"
 		}
-		ttl := 0
-		if len(args) > 2 {
-			var err error
-			ttl, err = strconv.Atoi(args[2])
-			if err != nil {
-				return "-ERR invalid TTL value\r\n"
-			}
+
+		key := args[0]
+		value := args[1]
+		flags := args[2:] // All remaining arguments are considered as flags or TTL
+
+		// Call the Set function with flags
+		response := s.store.Set(key, value, flags...)
+		if response == "+0\r\n" {
+			return "-ERR condition not met for 'SET' command\r\n"
 		}
-		return s.store.Set(args[0], args[1], ttl)
+		return response
 
 	case "GET":
 		if len(args) != 1 {
@@ -151,7 +192,8 @@ func (s *Server) executeCommand(command string, args []string) string {
 		}
 		stop, err := strconv.Atoi(args[2])
 		if err != nil {
-			return "-ERR invalid stop argument\r\n"
+
+			return "-ERR invalid stop argument" + "\r\n"
 		}
 		members := s.store.ZRange(args[0], start, stop)
 		return fmt.Sprintf("+%v\r\n\r\n", members)
