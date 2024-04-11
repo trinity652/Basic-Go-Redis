@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -55,18 +56,53 @@ func matchPattern(key, pattern string) bool {
 }
 
 // Set a key to hold the string value
-func (store *InMemoryStore) Set(key, value string, ttl ...int) string {
+func (store *InMemoryStore) Set(key, value string, flags ...string) string {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 
+	// Initialize variables for flags
+	setIfExists := false
+	setIfNotExists := false
+	var expiration int
+
+	// Parse flags
+	for _, flag := range flags {
+		switch {
+		case flag == "NX":
+			setIfNotExists = true
+		case flag == "XX":
+			setIfExists = true
+		case strings.HasPrefix(flag, "EX"):
+			if ex, err := strconv.Atoi(flag[2:]); err == nil {
+				expiration = ex
+			}
+		}
+	}
+
+	// Check conditions for NX and XX
+	if setIfNotExists && store.exists(key) {
+		return "+0\r\n" // Key exists, do not set
+	}
+	if setIfExists && !store.exists(key) {
+		return "+0\r\n" // Key does not exist, do not set
+	}
+
+	// Set the key
 	store.data[key] = value
 
-	if len(ttl) > 0 && ttl[0] > 0 {
-		expirationTime := time.Now().Add(time.Duration(ttl[0]) * time.Second)
+	// Set expiration if needed
+	if expiration > 0 {
+		expirationTime := time.Now().Add(time.Duration(expiration) * time.Second)
 		store.expiration[key] = expirationTime
 	}
 
-	return "+OK\r\n"
+	return "+1\r\n" // Success
+}
+
+// Helper function to check if a key exists
+func (store *InMemoryStore) exists(key string) bool {
+	_, exists := store.data[key]
+	return exists
 }
 
 // Get the value of key
