@@ -196,7 +196,12 @@ func (s *Server) executeCommand(command string, args []string) string {
 			return "-ERR invalid stop argument" + "\r\n"
 		}
 		members := s.store.ZRange(args[0], start, stop)
-		return fmt.Sprintf("+%v\r\n\r\n", members)
+		response := fmt.Sprintf("*%d\r\n", len(members))
+		for _, key := range members {
+			response += fmt.Sprintf("$%d\r\n%s\r\n", len(key), key)
+		}
+		response += "\r\n"
+		return response
 
 	default:
 		return "-ERR unknown command\r\n"

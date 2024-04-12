@@ -142,8 +142,8 @@ func TestServer_ZADD_ZRANGE(t *testing.T) {
 	defer conn.Close()
 
 	// Add members to a sorted set
-	sendCommand(conn, "*4\r\n$4\r\nZADD\r\n$6\r\nmyzset\r\n$1\r\n1\r\n$7\r\nmember1\r\n")
-	sendCommand(conn, "*4\r\n$4\r\nZADD\r\n$6\r\nmyzset\r\n$1\r\n2\r\n$7\r\nmember2\r\n")
+	sendCommand(conn, "*4\r\n$4\r\nZADD\r\n$6\r\nmyzset\r\n$1\r\n1\r\n$7\r\nmember2\r\n")
+	sendCommand(conn, "*4\r\n$4\r\nZADD\r\n$6\r\nmyzset\r\n$1\r\n2\r\n$7\r\nmember1\r\n")
 
 	// Get range of members
 	zrangeResponse, err := sendCommand(conn, "*4\r\n$6\r\nZRANGE\r\n$6\r\nmyzset\r\n$1\r\n0\r\n$1\r\n1\r\n")
