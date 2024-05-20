@@ -1,7 +1,7 @@
 
-# Basic-Go-Redis
+# Go-Redis
 
-Basic-Go-Redis is a simplified Redis-like in-memory database server implemented in Go, supporting a subset of the Redis protocol. This project also includes a client that communicates with the server using the Redis Serialization Protocol (RESP).
+Go-Redis is a simplified Redis-like in-memory database server implemented in Go, supporting a subset of the Redis protocol. This project also includes a client that communicates with the server using the Redis Serialization Protocol (RESP).
 
 ## Features
 
